@@ -2,6 +2,7 @@ asttokens==2.2.1
 backcall==0.2.0
 Bottleneck==1.3.5
 Brotli==1.0.9
+cachier==2.0.0
 certifi==2022.12.7
 charset-normalizer==3.0.1
 chart-studio==1.1.0

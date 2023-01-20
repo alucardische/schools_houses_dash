@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 from data_preparation import schools_meta, best_schools, merged
-from zoopla_api import simple_request, get_floor_area, prepare_link
+from zoopla_api import simple_request, get_floor_area, prepare_link, prepare_image_link
 
 px.set_mapbox_access_token(open(".mapbox_token").read())
 import gmaps
@@ -148,9 +148,9 @@ def update_output(n_clicks, value):
     json = simple_request(postcode)
 
     dfout = pd.DataFrame([
-        {'title': listing['title'],
-         'price': listing['price'],
-         'zoopla': prepare_link(listing['details_url']),
+        {'zoopla': prepare_image_link(listing),
+         'title': listing['title'],
+         'price': pd.to_numeric(listing['price']),
          'floor_area': get_floor_area(listing),
          'floor_plan': prepare_link(listing['floor_plan'][0]) if 'floor_plan' in listing else None,
          'num_bedrooms': listing['num_bedrooms'],
@@ -161,7 +161,11 @@ def update_output(n_clicks, value):
     return [dash_table.DataTable(
         dfout.to_dict('records'),
         [{"name": i, "id": i, "presentation": "markdown"} for i in dfout.columns],
-        markdown_options={'html': True}
+        markdown_options={'html': True},
+        sort_action='native',
+        page_action="native",
+        page_current=0,
+        page_size=10,
     )]
 
 
