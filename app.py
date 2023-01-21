@@ -10,7 +10,7 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 import plotly.graph_objects as go
 
-from data_preparation import schools_meta, best_schools, merged
+from data_preparation import schools_meta, best_schools, merged, haversine
 from zoopla_api import simple_request, get_floor_area, prepare_link, prepare_image_link
 
 px.set_mapbox_access_token(open(".mapbox_token").read())
@@ -22,6 +22,8 @@ with open('pass.txt', 'r') as f:
 
 fig = px.scatter_mapbox(merged, lat="lat", lon="lng", color="Type", text='School', size = np.ones(len(merged))*15,
                         color_continuous_scale=px.colors.cyclical.IceFire, zoom=10)
+fig.update_layout(mapbox_style="streets")
+
 app = dash.Dash(
     __name__,
     external_stylesheets=[dbc.themes.BOOTSTRAP]
@@ -103,7 +105,7 @@ app.layout = dbc.Container(
         dbc.Row(
             [
                 dbc.Col(controls, md=4),
-                dbc.Col(dcc.Graph(id="map", figure=fig), md=8),
+                dbc.Col(html.Div(id='map_container', children = [dcc.Graph(id="map", figure=fig)]), md=8),
             ],
             align="center",
         ),
@@ -137,13 +139,18 @@ def display_click_data(custom_data):
 
 @app.callback(
     Output('houses', 'children'),
+    # Output('map_container', 'children'),
     Input('get_zoopla', 'n_clicks'),
-    State('school_info', 'children')
+    State('school_info', 'children'), State('map_container', 'children')
 )
-def update_output(n_clicks, value):
+def update_output(n_clicks, value, map):
     if n_clicks == 0:
-        return []
+        return (
+            [],
+            # [dcc.Graph(id="map", figure=fig)]
+        )
     data = pd.DataFrame(value[0]['props']['data'])
+    data_series = data.set_index('School').iloc[:, 0]
     postcode = data.query('School == "POSTCODE"').iloc[0, 1]
     json = simple_request(postcode)
 
@@ -151,6 +158,7 @@ def update_output(n_clicks, value):
         {'zoopla': prepare_image_link(listing),
          'title': listing['title'],
          'price': pd.to_numeric(listing['price']),
+         'distance_to_school': np.round(haversine(data_series['lng'], data_series['lat'], listing['longitude'], listing['latitude']), 2),
          'floor_area': get_floor_area(listing),
          'floor_plan': prepare_link(listing['floor_plan'][0]) if 'floor_plan' in listing else None,
          'num_bedrooms': listing['num_bedrooms'],
@@ -158,15 +166,34 @@ def update_output(n_clicks, value):
          'features': ', '.join(listing['bullet']),
          } for listing in json['listing']])
 
-    return [dash_table.DataTable(
-        dfout.to_dict('records'),
-        [{"name": i, "id": i, "presentation": "markdown"} for i in dfout.columns],
-        markdown_options={'html': True},
-        sort_action='native',
-        page_action="native",
-        page_current=0,
-        page_size=10,
-    )]
+    mapdf = pd.DataFrame([
+        {'longitude': listing['longitude'],
+         'latitude': listing['latitude'],
+         'description': f"{listing['title'].replace(' for sale', '')}, {pd.to_numeric(listing['price'])}",
+         'type': 'House'
+         } for listing in json['listing']])
+
+    mapdf = pd.concat([mapdf, pd.DataFrame({'longitude': [data_series['lng']],
+                                   'latitude': [data_series['lat']],
+                                   'description': [data_series.name.rstrip()],
+                                    'type': ['School']})])
+
+    new_fig = px.scatter_mapbox(mapdf, lat="latitude", lon="longitude", color="type", text='description', size=np.ones(len(mapdf)) * 15,
+                            color_continuous_scale=px.colors.cyclical.IceFire, zoom=10)
+    new_fig.update_layout(mapbox_style="streets")
+
+    return (
+        dash_table.DataTable(
+            dfout.to_dict('records'),
+            [{"name": i, "id": i, "presentation": "markdown"} for i in dfout.columns],
+            markdown_options={'html': True},
+            sort_action='native',
+            page_action="native",
+            page_current=0,
+            page_size=10,
+        ),
+        # [dcc.Graph(id="map", figure=new_fig)]
+    )
 
 
 
